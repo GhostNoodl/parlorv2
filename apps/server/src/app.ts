@@ -8,6 +8,7 @@ import { webDistDir } from "./lib/paths";
 import { characterRoutes } from "./routes/characters";
 import { chatRoutes, messageRoutes } from "./routes/chats";
 import { connectionRoutes } from "./routes/connections";
+import { personaRoutes } from "./routes/personas";
 import { settingsRoutes } from "./routes/settings";
 
 export const app = new Hono();
@@ -25,6 +26,7 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api/settings", settingsRoutes);
 app.route("/api/connections", connectionRoutes);
 app.route("/api/characters", characterRoutes);
+app.route("/api/personas", personaRoutes);
 app.route("/api/chats", chatRoutes);
 app.route("/api/messages", messageRoutes);
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));

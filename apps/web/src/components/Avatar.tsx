@@ -11,7 +11,7 @@ export function Avatar({ name, src, size = 40, className }: { name: string; src?
   const hue = nameHue(name);
   const style = { width: size, height: size, fontSize: size * 0.42 };
   if (src) {
-    return <img src={src} alt="" style={style} className={clsx("shrink-0 rounded-full object-cover ring-1 ring-line", className)} />;
+    return <img src={src} alt="" style={style} className={clsx("shrink-0 rounded-full object-cover object-top ring-1 ring-line", className)} />;
   }
   return (
     <div

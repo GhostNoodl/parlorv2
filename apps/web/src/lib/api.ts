@@ -7,15 +7,18 @@ import type {
   GenerateMode,
   GenerationSettings,
   Message,
+  Persona,
   ProviderKind,
+  CharacterCard,
 } from "@parlor/shared";
 
 export class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = init?.body instanceof FormData;
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: isForm ? init?.headers : { "Content-Type": "application/json", ...init?.headers },
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
@@ -41,6 +44,17 @@ export interface ProbeResult {
   error?: string;
 }
 
+export interface ImportResult {
+  imported: Character[];
+  errors: { file: string; error: string }[];
+}
+
+function filesForm(files: Iterable<File | Blob>, name = "file"): FormData {
+  const form = new FormData();
+  for (const file of files) form.append(name, file, file instanceof File ? file.name : "avatar.png");
+  return form;
+}
+
 export interface ChatDetail {
   chat: Chat;
   character: Character;
@@ -58,7 +72,30 @@ export const api = {
   probe: (input: { provider: ProviderKind; baseUrl: string; apiKey?: string; connectionId?: string }) =>
     send<ProbeResult>("POST", "/connections/probe", input),
 
+  personas: () => request<Persona[]>("/personas"),
+  createPersona: (input: { name: string; description: string }) => send<Persona>("POST", "/personas", input),
+  updatePersona: (id: string, patch: { name?: string; description?: string }) => send<Persona>("PATCH", `/personas/${id}`, patch),
+  deletePersona: (id: string) => send<void>("DELETE", `/personas/${id}`),
+
   characters: () => request<Character[]>("/characters"),
+  character: (id: string) => request<Character>(`/characters/${id}`),
+  createCharacter: (card: Partial<CharacterCard>) => send<Character>("POST", "/characters", card),
+  updateCharacter: (id: string, card: Partial<CharacterCard>) => send<Character>("PATCH", `/characters/${id}`, card),
+  deleteCharacter: (id: string) => send<void>("DELETE", `/characters/${id}`),
+  duplicateCharacter: (id: string) => send<Character>("POST", `/characters/${id}/duplicate`),
+  importCharacters: async (files: File[]): Promise<ImportResult> => {
+    // A 400 still carries per-file errors, so read the body either way.
+    const res = await fetch("/api/characters/import", { method: "POST", body: filesForm(files) });
+    const body = await res.json().catch(() => ({}));
+    if (!body.imported) throw new ApiError(body.error ?? `Import failed (${res.status})`);
+    return body as ImportResult;
+  },
+  exportUrl: (id: string, format: "png" | "json") => `/api/characters/${id}/export?format=${format}`,
+
+  setAvatar: (kind: "characters" | "personas", id: string, png: Blob) =>
+    request<{ avatar: string }>(`/${kind}/${id}/avatar`, { method: "PUT", body: filesForm([png]) }),
+  removeAvatar: (kind: "characters" | "personas", id: string) => send<void>("DELETE", `/${kind}/${id}/avatar`),
+
   chats: (characterId: string) => request<Chat[]>(`/characters/${characterId}/chats`),
   createChat: (characterId: string) => send<Chat>("POST", `/characters/${characterId}/chats`),
 

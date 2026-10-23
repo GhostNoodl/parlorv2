@@ -13,7 +13,7 @@ pnpm install
 pnpm start        # builds the UI and serves everything on http://127.0.0.1:3700
 ```
 
-Open the app, go to **Settings → Connections**, pick a quick-start preset, paste a key if it needs one, hit **Test**, choose a model and save. Then say hi to Basil, the sample character.
+Open the app, go to **Settings → Connections**, pick a quick-start preset, paste a key if it needs one, hit **Test**, choose a model and save. Then say hi to Basil, the sample character, or drop a few character cards from your collection anywhere on the page.
 
 **On your phone:** run `HOST=0.0.0.0 pnpm start` and open `http://<your-computer's-ip>:3700` on the same Wi-Fi. Only do this on a network you trust; there's no login yet.
 
@@ -34,7 +34,9 @@ Your data (SQLite database plus the key that encrypts your API keys) lives in `.
 - Continue a reply, stop mid-stream (the partial reply is kept), edit, copy and delete messages
 - Alternate greetings show up as swipes on the first message
 - Roleplay-aware text styling: *actions* in italics, "speech" highlighted
-- Your name and persona, an editable system prompt, `{{char}}` / `{{user}}` macros
+- Character cards: import V1/V2/V3 card PNGs and JSON (button or drag and drop, many at once), export as PNG (V2 + V3, works in SillyTavern) or V3 JSON
+- A character editor with portrait avatars, alternate greetings, example dialogue, prompt overrides and an unsaved-changes guard
+- Personas with avatars, switchable from the chat box, plus an editable system prompt and `{{char}}` / `{{user}}` macros
 - Token-aware trimming so long chats fit the model's context
 - API keys encrypted at rest (AES-256-GCM) and never sent back to the browser
 - Dark ("Velvet") and light ("Parchment") themes, mobile-friendly layout
@@ -52,7 +54,7 @@ Claude's current API doesn't accept temperature or top-p, so Claude connections 
 
 - [x] **Phase 0: Skeleton.** Monorepo, server, UI, SQLite, settings
 - [x] **Phase 1: Talk to a model.** Claude + OpenAI-compatible adapters, streaming, swipes
-- [ ] **Phase 2: Characters and personas.** V2/V3 card import/export (PNG + JSON), character editor, avatars, multiple personas
+- [x] **Phase 2: Characters and personas.** V2/V3 card import/export (PNG + JSON), character editor, avatars, multiple personas
 - [ ] **Phase 3: Real RP chat.** Prompt preset editor, prompt inspector, chat search
 - [ ] **Phase 4: Lorebooks.** Keyword-triggered world info, embedded card lorebooks
 - [ ] **Later:** branching, group chats, regex scripts, summaries and memory, VN mode with sprites, an AI game master
