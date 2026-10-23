@@ -1,0 +1,109 @@
+import type {
+  AppSettings,
+  Character,
+  Chat,
+  Connection,
+  GenerateEvent,
+  GenerateMode,
+  GenerationSettings,
+  Message,
+  ProviderKind,
+} from "@parlor/shared";
+
+export class ApiError extends Error {}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (res.status === 204) return undefined as T;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status})`);
+  return body as T;
+}
+
+const send = <T>(method: string, path: string, body?: unknown) =>
+  request<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+
+export interface ConnectionInput {
+  name: string;
+  provider: ProviderKind;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  settings?: Partial<GenerationSettings>;
+}
+
+export interface ProbeResult {
+  ok: boolean;
+  models: string[];
+  error?: string;
+}
+
+export interface ChatDetail {
+  chat: Chat;
+  character: Character;
+  messages: Message[];
+}
+
+export const api = {
+  settings: () => request<AppSettings>("/settings"),
+  updateSettings: (patch: Partial<AppSettings>) => send<AppSettings>("PATCH", "/settings", patch),
+
+  connections: () => request<Connection[]>("/connections"),
+  createConnection: (input: ConnectionInput) => send<Connection>("POST", "/connections", input),
+  updateConnection: (id: string, input: Partial<ConnectionInput>) => send<Connection>("PATCH", `/connections/${id}`, input),
+  deleteConnection: (id: string) => send<void>("DELETE", `/connections/${id}`),
+  probe: (input: { provider: ProviderKind; baseUrl: string; apiKey?: string; connectionId?: string }) =>
+    send<ProbeResult>("POST", "/connections/probe", input),
+
+  characters: () => request<Character[]>("/characters"),
+  chats: (characterId: string) => request<Chat[]>(`/characters/${characterId}/chats`),
+  createChat: (characterId: string) => send<Chat>("POST", `/characters/${characterId}/chats`),
+
+  chat: (chatId: string) => request<ChatDetail>(`/chats/${chatId}`),
+  renameChat: (chatId: string, title: string) => send<void>("PATCH", `/chats/${chatId}`, { title }),
+  deleteChat: (chatId: string) => send<void>("DELETE", `/chats/${chatId}`),
+
+  updateMessage: (id: number, patch: { swipeId?: number; content?: string }) => send<Message>("PATCH", `/messages/${id}`, patch),
+  deleteMessage: (id: number) => send<void>("DELETE", `/messages/${id}`),
+};
+
+/**
+ * Starts a generation and calls `onEvent` for each streamed event.
+ * Resolves when the stream ends; abort the signal to stop early.
+ */
+export async function generate(
+  chatId: string,
+  body: { mode: GenerateMode; text?: string },
+  onEvent: (event: GenerateEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/chats/${chatId}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new ApiError(err.error ?? `Generation failed (${res.status})`);
+  }
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let split: number;
+    while ((split = buffer.indexOf("\n\n")) >= 0) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("data:")) onEvent(JSON.parse(line.slice(5)) as GenerateEvent);
+      }
+    }
+  }
+}

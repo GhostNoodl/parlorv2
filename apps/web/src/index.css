@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/fraunces";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Colour tokens. Dark ("Velvet") is the default; light is "Parchment". */
+:root,
+[data-theme="dark"] {
+  --bg: #0e0b14;
+  --bg-glow-1: rgba(246, 165, 192, 0.10);
+  --bg-glow-2: rgba(150, 120, 255, 0.10);
+  --surface: #16121e;
+  --surface-2: #1e1928;
+  --surface-3: #282133;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #eee8f6;
+  --text-muted: #a99fbb;
+  --text-faint: #6f6680;
+  --accent: #f6a5c0;
+  --accent-2: #b39bff;
+  --accent-ink: #1a1020;
+  --action: #c9b3ff;
+  --speech: #ffe0ea;
+  --user-bubble: rgba(179, 155, 255, 0.13);
+  --danger: #ff7a8a;
+  --success: #7ee0b0;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f7f3ee;
+  --bg-glow-1: rgba(226, 110, 150, 0.12);
+  --bg-glow-2: rgba(124, 92, 255, 0.10);
+  --surface: #fffdfa;
+  --surface-2: #f3eee7;
+  --surface-3: #e9e2d8;
+  --border: rgba(40, 25, 60, 0.09);
+  --border-strong: rgba(40, 25, 60, 0.18);
+  --text: #261d33;
+  --text-muted: #6a5f78;
+  --text-faint: #a097ab;
+  --accent: #d4567f;
+  --accent-2: #7c5cff;
+  --accent-ink: #ffffff;
+  --action: #7656c9;
+  --speech: #8a2a4c;
+  --user-bubble: rgba(124, 92, 255, 0.09);
+  --danger: #d63c55;
+  --success: #1f9e66;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-action: var(--action);
+  --color-speech: var(--speech);
+  --color-user-bubble: var(--user-bubble);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 600px at 0% 0%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(800px 600px at 100% 100%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-gradient-accent {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+}
+
+.glass {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+}
+
+/* Blinking caret while a reply streams in. */
+.typing-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: caret 1s steps(2) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.animate-rise {
+  animation: rise 0.25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .typing-caret::after {
+    animation: none;
+  }
+}
