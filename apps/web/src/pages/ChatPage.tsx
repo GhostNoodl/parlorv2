@@ -21,7 +21,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { Avatar, nameHue } from "../components/Avatar";
 import { Button, IconButton } from "../components/ui";
 import { api, generate, type ChatDetail } from "../lib/api";
-import { keys, useActiveConnection, useNewChat, useSettings } from "../lib/hooks";
+import { keys, useActiveConnection, useActivePersona, useNewChat, usePersonas } from "../lib/hooks";
 import { useLayout } from "../lib/layout";
 import { RpText } from "../lib/rp-text";
 
@@ -128,7 +128,7 @@ function ChatView({
 }) {
   const { chat, character, messages } = detail;
   const queryClient = useQueryClient();
-  const settings = useSettings();
+  const persona = useActivePersona();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const hue = nameHue(character.name);
@@ -165,7 +165,7 @@ function ChatView({
   }, [messages, streaming?.text, streaming?.pendingUser]);
 
   const busy = streaming !== null;
-  const userName = settings.data?.userName ?? "You";
+  const user: UserInfo = { name: persona?.name ?? "You", avatar: persona?.avatar ?? null };
 
   return (
     <>
@@ -194,7 +194,7 @@ function ChatView({
                 key={message.id}
                 message={message}
                 character={character}
-                userName={userName}
+                user={user}
                 override={override}
                 streaming={isTarget}
                 swipeLabel={isTarget && streaming.mode === "regenerate" ? `${message.swipes.length + 1}/${message.swipes.length + 1}` : undefined}
@@ -206,7 +206,7 @@ function ChatView({
               />
             );
           })}
-          {streaming?.pendingUser && <UserBubble name={userName} text={streaming.pendingUser} />}
+          {streaming?.pendingUser && <UserBubble user={user} text={streaming.pendingUser} />}
           {streaming?.mode === "send" && (
             <AssistantShell character={character}>
               {streaming.text ? <RpText text={streaming.text} streaming /> : <TypingDots />}
@@ -264,9 +264,13 @@ function ChatHeader({ detail }: { detail: ChatDetail }) {
       <IconButton label="Open menu" onClick={openMenu} className="lg:hidden">
         <Menu size={20} />
       </IconButton>
-      <Avatar name={character.name} src={character.avatar} size={38} />
+      <Link to={`/characters/${character.id}`} title={`Edit ${character.name}`} className="shrink-0 transition-opacity hover:opacity-80">
+        <Avatar name={character.name} src={character.avatar} size={38} />
+      </Link>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-lg leading-tight font-semibold">{character.name}</div>
+        <Link to={`/characters/${character.id}`} className="block truncate font-display text-lg leading-tight font-semibold hover:text-accent">
+          {character.name}
+        </Link>
         {editing ? (
           <input
             autoFocus
@@ -324,12 +328,18 @@ function AssistantShell({ character, children, actions }: { character: Character
   );
 }
 
-function UserBubble({ name, text, children, actions }: { name: string; text?: string; children?: ReactNode; actions?: ReactNode }) {
+interface UserInfo {
+  name: string;
+  avatar: string | null;
+}
+
+function UserBubble({ user, text, children, actions }: { user: UserInfo; text?: string; children?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="group animate-rise flex flex-col items-end">
       <div className="mb-1.5 flex items-center gap-2 text-xs text-faint">
         {actions}
-        <span className="font-medium">{name}</span>
+        <span className="font-medium">{user.name}</span>
+        <Avatar name={user.name} src={user.avatar} size={22} />
       </div>
       <div className="max-w-[88%] rounded-2xl rounded-tr-md border border-line bg-user-bubble px-4 py-3 text-[15px] sm:text-base">
         {children ?? <RpText text={text ?? ""} />}
@@ -351,7 +361,7 @@ function TypingDots() {
 function MessageItem({
   message,
   character,
-  userName,
+  user,
   override,
   streaming,
   swipeLabel,
@@ -363,7 +373,7 @@ function MessageItem({
 }: {
   message: Message;
   character: Character;
-  userName: string;
+  user: UserInfo;
   override?: string;
   streaming: boolean;
   swipeLabel?: string;
@@ -445,7 +455,7 @@ function MessageItem({
 
   if (message.role === "user") {
     return (
-      <UserBubble name={userName} actions={actions}>
+      <UserBubble user={user} actions={actions}>
         {body}
       </UserBubble>
     );
@@ -559,7 +569,8 @@ function Composer({
             <IconButton label="Continue reply" disabled={busy || !canContinue} onClick={onContinue}>
               <FastForward size={16} />
             </IconButton>
-            <span className="ml-1 hidden text-xs text-faint sm:inline">Enter to send · Shift+Enter for a new line · ←/→ to swipe</span>
+            <PersonaSwitcher />
+            <span className="ml-1 hidden text-xs text-faint xl:inline">Enter to send · Shift+Enter for a new line · ←/→ to swipe</span>
             <div className="flex-1" />
             {busy ? (
               <Button size="sm" variant="soft" onClick={onStop} aria-label="Stop">
@@ -577,6 +588,57 @@ function Composer({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PersonaSwitcher() {
+  const personas = usePersonas();
+  const active = useActivePersona();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  if (!active) return null;
+
+  const choose = async (id: string) => {
+    setOpen(false);
+    queryClient.setQueryData(keys.settings, await api.updateSettings({ activePersonaId: id }));
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1 text-xs text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+        title="Who you're playing as"
+      >
+        <Avatar name={active.name} src={active.avatar} size={20} />
+        <span className="max-w-28 truncate">{active.name}</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="animate-rise absolute bottom-full left-0 z-20 mb-2 w-56 rounded-xl bg-surface border border-line p-1.5 shadow-2xl shadow-black/20">
+            <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Play as</div>
+            {personas.data?.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => choose(p.id)}
+                className={clsx(
+                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                  p.id === active.id ? "bg-surface-3 text-ink" : "text-muted hover:bg-surface-2 hover:text-ink",
+                )}
+              >
+                <Avatar name={p.name} src={p.avatar} size={24} />
+                <span className="flex-1 truncate">{p.name}</span>
+                {p.id === active.id && <Check size={14} className="text-accent" />}
+              </button>
+            ))}
+            <Link to="/settings" onClick={() => setOpen(false)} className="mt-1 block rounded-lg px-2.5 py-2 text-xs text-faint hover:bg-surface-2 hover:text-ink">
+              Manage personas…
+            </Link>
+          </div>
+        </>
+      )}
     </div>
   );
 }

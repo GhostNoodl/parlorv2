@@ -17,6 +17,22 @@ export interface CharacterCard {
   character_version: string;
   tags: string[];
   extensions: Record<string, unknown>;
+  /** Embedded lorebook, kept as-is from the card until lorebooks land. */
+  character_book?: unknown;
+  /** V3 extras, preserved on round trips. */
+  nickname?: string;
+  group_only_greetings?: string[];
+  source?: string[];
+  creation_date?: number;
+  modification_date?: number;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string | null;
+  createdAt: number;
 }
 
 export interface Character {
@@ -77,10 +93,9 @@ export interface Message {
 }
 
 export interface AppSettings {
-  userName: string;
-  userDescription: string;
   systemPrompt: string;
   activeConnectionId: string | null;
+  activePersonaId: string | null;
 }
 
 export type GenerateMode = "send" | "regenerate" | "continue";

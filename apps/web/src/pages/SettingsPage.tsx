@@ -5,6 +5,7 @@ import {
   type Connection,
   type Effort,
   type GenerationSettings,
+  type Persona,
   type ProviderKind,
 } from "@parlor/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,7 +14,11 @@ import { CheckCircle2, CircleAlert, Loader2, Menu, Pencil, Plus, RotateCcw, Tras
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Card, Field, IconButton, Input, Textarea } from "../components/ui";
 import { api, type ConnectionInput, type ProbeResult } from "../lib/api";
-import { keys, useConnections, useSettings } from "../lib/hooks";
+import { keys, useActivePersona, useConnections, usePersonas, useSettings } from "../lib/hooks";
+import { toPng } from "../lib/image";
+import { useToast } from "../lib/toast";
+import { Avatar } from "../components/Avatar";
+import { AvatarPicker } from "../components/AvatarPicker";
 import { useLayout } from "../lib/layout";
 
 export function SettingsPage() {
@@ -366,7 +371,7 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
 // ---------------------------------------------------------------------------
 // Persona and prompt
 
-function useSettingsDraft<K extends "userName" | "userDescription" | "systemPrompt">(key: K) {
+function useSettingsDraft<K extends "systemPrompt">(key: K) {
   const settings = useSettings();
   const queryClient = useQueryClient();
   const [value, setValue] = useState<string>("");
@@ -392,28 +397,159 @@ function SaveBar({ dirty, saving, onSave, extra }: { dirty: boolean; saving: boo
 }
 
 function PersonaSection() {
-  const name = useSettingsDraft("userName");
-  const description = useSettingsDraft("userDescription");
-  const dirty = name.dirty || description.dirty;
+  const personas = usePersonas();
+  const active = useActivePersona();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Persona | "new" | null>(null);
+
+  const activate = useMutation({
+    mutationFn: (id: string) => api.updateSettings({ activePersonaId: id }),
+    onSuccess: (data) => queryClient.setQueryData(keys.settings, data),
+  });
+
   return (
-    <Section title="You" description="Who you are in the story. Characters see this as {{user}}.">
-      <Card className="space-y-4">
-        <Field label="Your name">
-          <Input value={name.value} onChange={(e) => name.setValue(e.target.value)} />
-        </Field>
-        <Field label="About you" hint="Optional. Appearance, personality, anything characters should know.">
-          <Textarea rows={3} value={description.value} onChange={(e) => description.setValue(e.target.value)} placeholder="A wandering bard with a borrowed lute and a talent for trouble." />
-        </Field>
-        <SaveBar
-          dirty={dirty}
-          saving={name.saving || description.saving}
-          onSave={() => {
-            if (name.dirty && name.value.trim()) name.save();
-            if (description.dirty) description.save();
-          }}
-        />
-      </Card>
+    <Section
+      title="Personas"
+      description="Who you are in the story. Characters see your persona as {{user}}."
+      action={
+        editing === null && (
+          <Button size="sm" onClick={() => setEditing("new")}>
+            <Plus size={15} /> Add
+          </Button>
+        )
+      }
+    >
+      <div className="space-y-3">
+        {editing === "new" && <PersonaForm onDone={() => setEditing(null)} />}
+        {personas.data?.map((persona) =>
+          editing !== "new" && editing?.id === persona.id ? (
+            <PersonaForm key={persona.id} existing={persona} canDelete={(personas.data?.length ?? 0) > 1} onDone={() => setEditing(null)} />
+          ) : (
+            <div
+              key={persona.id}
+              className={clsx(
+                "flex items-center gap-4 rounded-2xl border p-3 pr-4 transition-colors",
+                active?.id === persona.id ? "border-accent/40 bg-accent/[0.05]" : "border-line bg-surface/70",
+              )}
+            >
+              <button onClick={() => activate.mutate(persona.id)} title={active?.id === persona.id ? "Active" : "Play as this persona"}>
+                <Avatar name={persona.name} src={persona.avatar} size={48} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-display font-semibold">{persona.name}</span>
+                  {active?.id === persona.id ? (
+                    <span className="text-xs font-medium text-accent">Playing as</span>
+                  ) : (
+                    <button onClick={() => activate.mutate(persona.id)} className="text-xs text-faint hover:text-ink">
+                      Use
+                    </button>
+                  )}
+                </div>
+                <p className="truncate text-sm text-muted">{persona.description || "No description yet."}</p>
+              </div>
+              <IconButton label="Edit" onClick={() => setEditing(persona)}>
+                <Pencil size={16} />
+              </IconButton>
+            </div>
+          ),
+        )}
+      </div>
     </Section>
+  );
+}
+
+function PersonaForm({ existing, canDelete = false, onDone }: { existing?: Persona; canDelete?: boolean; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState(existing?.name ?? "");
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [avatar, setAvatar] = useState<string | null>(existing?.avatar ?? null);
+  const [pendingAvatar, setPendingAvatar] = useState<Blob | null>(null);
+  const [saving, setSaving] = useState(false);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: keys.personas });
+    queryClient.invalidateQueries({ queryKey: keys.settings });
+  };
+
+  const pick = async (file: File) => {
+    try {
+      const png = await toPng(file, 512, 512);
+      if (existing) {
+        setAvatar((await api.setAvatar("personas", existing.id, png)).avatar);
+        refresh();
+      } else {
+        setPendingAvatar(png);
+        setAvatar(URL.createObjectURL(png));
+      }
+    } catch (err) {
+      toast("error", (err as Error).message);
+    }
+  };
+
+  const removeAvatar = async () => {
+    if (existing) {
+      await api.removeAvatar("personas", existing.id);
+      refresh();
+    }
+    setPendingAvatar(null);
+    setAvatar(null);
+  };
+
+  const save = async () => {
+    if (!name.trim()) return toast("error", "Your persona needs a name.");
+    setSaving(true);
+    try {
+      if (existing) await api.updatePersona(existing.id, { name, description });
+      else {
+        const created = await api.createPersona({ name, description });
+        if (pendingAvatar) await api.setAvatar("personas", created.id, pendingAvatar);
+      }
+      refresh();
+      onDone();
+    } catch (err) {
+      toast("error", (err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!existing || !confirm(`Delete the persona "${existing.name}"?`)) return;
+    await api.deletePersona(existing.id);
+    refresh();
+    onDone();
+  };
+
+  return (
+    <Card className="animate-rise border-accent-2/30">
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <AvatarPicker name={name} src={avatar} onPick={pick} onRemove={removeAvatar} shape="square" className="w-28 shrink-0 self-center sm:self-start" />
+        <div className="flex-1 space-y-4">
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="What do characters call you?" autoFocus />
+          </Field>
+          <Field label="About you" hint="Optional. Appearance, personality, anything characters should know.">
+            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A wandering bard with a borrowed lute and a talent for trouble." />
+          </Field>
+          <div className="flex items-center gap-2">
+            {existing && canDelete && (
+              <Button size="sm" variant="danger" onClick={remove}>
+                <Trash2 size={14} /> Delete
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" onClick={onDone}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="primary" onClick={save} disabled={saving}>
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              {existing ? "Save" : "Add persona"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

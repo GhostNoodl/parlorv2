@@ -4,10 +4,9 @@ import { getSettings, updateSettings } from "../lib/store";
 
 const settingsSchema = z
   .object({
-    userName: z.string().trim().min(1).max(100),
-    userDescription: z.string().max(20_000),
     systemPrompt: z.string().max(50_000),
     activeConnectionId: z.string().nullable(),
+    activePersonaId: z.string().nullable(),
   })
   .partial();
 

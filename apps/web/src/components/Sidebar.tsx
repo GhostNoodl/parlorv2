@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { MessageSquarePlus, Moon, Settings, Sun, X } from "lucide-react";
-import { NavLink, useParams } from "react-router";
+import { MessageSquarePlus, Moon, Pencil, Search, Settings, Sun, Upload, UserPlus, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { NavLink, useNavigate, useParams } from "react-router";
 import { api } from "../lib/api";
-import { keys, useCharacters, useNewChat, useOpenCharacter } from "../lib/hooks";
+import { keys, useCharacters, useImportCharacters, useNewChat, useOpenCharacter } from "../lib/hooks";
 import type { Theme } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { IconButton } from "./ui";
@@ -59,6 +60,14 @@ export function Sidebar({
   const characters = useCharacters();
   const openCharacter = useOpenCharacter();
   const newChat = useNewChat();
+  const navigate = useNavigate();
+  const importCharacters = useImportCharacters();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+  const visible = (characters.data ?? []).filter(
+    (c) => !query || c.name.toLowerCase().includes(query) || c.card.tags.some((t) => t.toLowerCase().includes(query)),
+  );
 
   return (
     <>
@@ -80,9 +89,48 @@ export function Sidebar({
           </IconButton>
         </div>
 
-        <div className="px-5 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">Characters</div>
+        <div className="flex items-center justify-between pt-3 pr-3 pb-1 pl-5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">Characters</span>
+          <div className="flex">
+            <IconButton label="Import character cards" onClick={() => fileInput.current?.click()} disabled={importCharacters.isPending}>
+              <Upload size={15} />
+            </IconButton>
+            <IconButton
+              label="New character"
+              onClick={() => {
+                navigate("/characters/new");
+                onClose();
+              }}
+            >
+              <UserPlus size={15} />
+            </IconButton>
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            accept=".png,.json,image/png,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              if (files.length) importCharacters.mutate(files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {(characters.data?.length ?? 0) > 6 && (
+          <div className="relative px-3 pb-2">
+            <Search size={14} className="pointer-events-none absolute top-1/2 left-6 -translate-y-1/2 text-faint" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search"
+              className="w-full rounded-lg border border-line bg-surface-2/70 py-1.5 pr-3 pl-8 text-sm placeholder:text-faint focus:border-accent-2/50 focus:outline-none"
+            />
+          </div>
+        )}
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {characters.data?.map((character) => {
+          {visible.map((character) => {
             const active = character.id === activeCharacterId;
             return (
               <div key={character.id}>
@@ -105,21 +153,34 @@ export function Sidebar({
                       <div className="truncate text-xs text-faint">{character.card.tags.slice(0, 3).join(" · ") || "Character"}</div>
                     </div>
                   </button>
-                  <IconButton
-                    label={`New chat with ${character.name}`}
-                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 max-lg:opacity-100"
-                    onClick={() => {
-                      newChat(character.id);
-                      onClose();
-                    }}
-                  >
-                    <MessageSquarePlus size={16} />
-                  </IconButton>
+                  <div className="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-lg:opacity-100">
+                    <IconButton
+                      label={`Edit ${character.name}`}
+                      className="size-7"
+                      onClick={() => {
+                        navigate(`/characters/${character.id}`);
+                        onClose();
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </IconButton>
+                    <IconButton
+                      label={`New chat with ${character.name}`}
+                      className="size-7"
+                      onClick={() => {
+                        newChat(character.id);
+                        onClose();
+                      }}
+                    >
+                      <MessageSquarePlus size={15} />
+                    </IconButton>
+                  </div>
                 </div>
                 {active && <ChatList characterId={character.id} onNavigate={onClose} />}
               </div>
             );
           })}
+          {query && !visible.length && <p className="px-3 py-4 text-sm text-faint">No one matches "{search}".</p>}
         </nav>
 
         <div className="flex items-center gap-1 border-t border-line p-3">
