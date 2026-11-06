@@ -6,7 +6,7 @@ A pretty, local-first AI roleplay chat frontend, in the spirit of SillyTavern an
 
 ## Quick start
 
-You need Node 22 or newer and pnpm (`corepack enable` gets you pnpm).
+You need Node 22 or newer and pnpm. Get pnpm with `npm install -g pnpm` (or `corepack enable`, which on Windows needs an admin terminal).
 
 ```bash
 pnpm install

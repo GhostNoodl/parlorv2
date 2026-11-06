@@ -31,8 +31,8 @@ app.route("/api/chats", chatRoutes);
 app.route("/api/messages", messageRoutes);
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
-// In production the server also hosts the built web app.
-if (process.env.NODE_ENV === "production" && existsSync(webDistDir)) {
+// Once the web app is built (pnpm start does this), the server hosts it too.
+if (existsSync(webDistDir)) {
   const root = relative(process.cwd(), webDistDir);
   app.use("/*", serveStatic({ root }));
   app.get("*", serveStatic({ root, path: "index.html" }));
