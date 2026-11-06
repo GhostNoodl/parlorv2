@@ -1,4 +1,4 @@
-import type { AppSettings, CharacterCard, GenerationSettings } from "./types";
+import type { AppSettings, CharacterCard, GenerationSettings, PromptBlock, PromptBlockKind } from "./types";
 
 export const DEFAULT_SYSTEM_PROMPT = [
   "You are {{char}} in an ongoing collaborative roleplay with {{user}}.",
@@ -7,8 +7,44 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "Never write {{user}}'s words, thoughts or actions.",
 ].join("\n");
 
+export const DEFAULT_REMINDER = "[Stay in character as {{char}}. Keep the reply vivid, and leave room for {{user}} to act.]";
+
+/** Display names for the built-in blocks. */
+export const BLOCK_LABELS: Record<PromptBlockKind, string> = {
+  text: "Custom text",
+  main: "Main prompt",
+  character: "Character",
+  persona: "Persona",
+  examples: "Example dialogue",
+  history: "Chat history",
+  postHistory: "Card's post-history instructions",
+};
+
+const block = (kind: PromptBlockKind, content = "", enabled = true, name = BLOCK_LABELS[kind]): PromptBlock => ({
+  id: kind === "text" ? `text-${Math.random().toString(36).slice(2, 10)}` : kind,
+  kind,
+  name,
+  enabled,
+  content,
+});
+
+/** The layout Parlor uses out of the box. */
+export function defaultPromptBlocks(mainPrompt = DEFAULT_SYSTEM_PROMPT): PromptBlock[] {
+  return [
+    block("main", mainPrompt),
+    block("character"),
+    block("persona"),
+    block("examples"),
+    block("history"),
+    block("postHistory"),
+    block("text", DEFAULT_REMINDER, false, "Reminder"),
+  ];
+}
+
+export const newTextBlock = (name = "Custom text", content = "") => block("text", content, true, name);
+
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  activePresetId: null,
   activeConnectionId: null,
   activePersonaId: null,
 };

@@ -8,8 +8,12 @@ import type {
   GenerationSettings,
   Message,
   Persona,
+  PromptBlock,
+  PromptPreset,
+  PromptPreview,
   ProviderKind,
   CharacterCard,
+  SearchResult,
 } from "@parlor/shared";
 
 export class ApiError extends Error {}
@@ -102,6 +106,26 @@ export const api = {
   chat: (chatId: string) => request<ChatDetail>(`/chats/${chatId}`),
   renameChat: (chatId: string, title: string) => send<void>("PATCH", `/chats/${chatId}`, { title }),
   deleteChat: (chatId: string) => send<void>("DELETE", `/chats/${chatId}`),
+
+  presets: () => request<PromptPreset[]>("/presets"),
+  createPreset: (name: string) => send<PromptPreset>("POST", "/presets", { name }),
+  updatePreset: (id: string, patch: { name?: string; blocks?: PromptBlock[] }) => send<PromptPreset>("PATCH", `/presets/${id}`, patch),
+  duplicatePreset: (id: string) => send<PromptPreset>("POST", `/presets/${id}/duplicate`),
+  deletePreset: (id: string) => send<void>("DELETE", `/presets/${id}`),
+  importPreset: async (file: File) => {
+    let data: unknown;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      throw new ApiError(`${file.name} isn't valid JSON.`);
+    }
+    return send<PromptPreset>("POST", "/presets/import", { fileName: file.name, data });
+  },
+  presetExportUrl: (id: string) => `/api/presets/${id}/export`,
+
+  promptPreview: (chatId: string, mode: GenerateMode = "send") => request<PromptPreview>(`/chats/${chatId}/prompt?mode=${mode}`),
+  search: (q: string, chatId?: string) =>
+    request<SearchResult[]>(`/search?${new URLSearchParams({ q, ...(chatId ? { chatId } : {}) })}`),
 
   updateMessage: (id: number, patch: { swipeId?: number; content?: string }) => send<Message>("PATCH", `/messages/${id}`, patch),
   deleteMessage: (id: number) => send<void>("DELETE", `/messages/${id}`),

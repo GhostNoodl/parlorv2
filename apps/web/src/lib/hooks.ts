@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useEffect } from "react";
+import { useBlocker, useNavigate } from "react-router";
 import { api } from "./api";
 import { useToast } from "./toast";
 
@@ -9,6 +9,7 @@ export const keys = {
   connections: ["connections"] as const,
   characters: ["characters"] as const,
   personas: ["personas"] as const,
+  presets: ["presets"] as const,
   chats: (characterId: string) => ["chats", characterId] as const,
   chat: (chatId: string) => ["chat", chatId] as const,
 };
@@ -18,6 +19,14 @@ export const useConnections = () => useQuery({ queryKey: keys.connections, query
 export const useCharacters = () => useQuery({ queryKey: keys.characters, queryFn: api.characters });
 
 export const usePersonas = () => useQuery({ queryKey: keys.personas, queryFn: api.personas });
+
+export const usePresets = () => useQuery({ queryKey: keys.presets, queryFn: api.presets });
+
+export function useActivePreset() {
+  const settings = useSettings();
+  const presets = usePresets();
+  return presets.data?.find((p) => p.id === settings.data?.activePresetId) ?? presets.data?.[0] ?? null;
+}
 
 export function useActivePersona() {
   const settings = useSettings();
@@ -75,4 +84,20 @@ export function useNewChat() {
     },
     [navigate, queryClient],
   );
+}
+
+/** Asks before leaving the page (in-app or by closing the tab) with unsaved edits. */
+export function useUnsavedGuard(dirty: boolean) {
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (confirm("Discard your unsaved changes?")) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 }

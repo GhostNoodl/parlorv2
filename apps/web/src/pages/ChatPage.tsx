@@ -12,13 +12,16 @@ import {
   MessageSquarePlus,
   Pencil,
   RefreshCw,
+  ScanEye,
+  Search,
   Square,
   Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { Avatar, nameHue } from "../components/Avatar";
+import { PromptInspector } from "../components/PromptInspector";
 import { Button, IconButton } from "../components/ui";
 import { api, generate, type ChatDetail } from "../lib/api";
 import { keys, useActiveConnection, useActivePersona, useNewChat, usePersonas } from "../lib/hooks";
@@ -135,7 +138,10 @@ function ChatView({
   const lastAssistant = messages.at(-1)?.role === "assistant" ? messages.at(-1) : undefined;
 
   const setMessage = (updated: Message) =>
-    queryClient.setQueryData<ChatDetail>(keys.chat(chat.id), (d) => d && { ...d, messages: d.messages.map((m) => (m.id === updated.id ? updated : m)) });
+    queryClient.setQueryData<ChatDetail>(
+      keys.chat(chat.id),
+      (d) => d && { ...d, messages: d.messages.map((m) => (m.id === updated.id ? updated : m)) },
+    );
 
   const swipe = useMutation({
     mutationFn: ({ message, to }: { message: Message; to: number }) => api.updateMessage(message.id, { swipeId: to }),
@@ -150,8 +156,7 @@ function ChatView({
       // Past the last swipe means "write a new one", except on the opening greeting.
       if (messages.length > 1) onRun("regenerate");
       return;
-    }
-    else swipe.mutate({ message, to });
+    } else swipe.mutate({ message, to });
   };
 
   // Follow the conversation as it grows, unless the user scrolled up to read.
@@ -164,6 +169,28 @@ function ChatView({
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages, streaming?.text, streaming?.pendingUser]);
 
+  // Arriving from search (?m=message&s=swipe&q=query): show that swipe, scroll to it and light it up.
+  const [params, setParams] = useSearchParams();
+  const jumpTo = Number(params.get("m")) || null;
+  useEffect(() => {
+    if (!jumpTo) return;
+    const message = messages.find((m) => m.id === jumpTo);
+    const el = document.getElementById(`m-${jumpTo}`);
+    const swipeTo = Number(params.get("s"));
+    const q = params.get("q") ?? "";
+    setParams({}, { replace: true });
+    if (!message || !el) return;
+    if (Number.isInteger(swipeTo) && swipeTo !== message.swipeId && swipeTo < message.swipes.length) swipe.mutate({ message, to: swipeTo });
+    stickToBottom.current = false;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.remove("flash-hit");
+      void el.offsetWidth; // restart the animation
+      el.classList.add("flash-hit");
+      highlightMatches(el, q);
+    });
+  }, [jumpTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const busy = streaming !== null;
   const user: UserInfo = { name: persona?.name ?? "You", avatar: persona?.avatar ?? null };
 
@@ -174,7 +201,7 @@ function ChatView({
         className="pointer-events-none absolute inset-x-0 top-0 h-72 opacity-[0.15] blur-3xl"
         style={{ background: `radial-gradient(60% 100% at 50% 0%, hsl(${hue} 80% 65%), transparent)` }}
       />
-      <ChatHeader detail={detail} />
+      <ChatHeader detail={detail} canRegenerate={Boolean(lastAssistant)} />
 
       <div ref={scrollRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-6 px-4 pt-6 pb-10 sm:px-6">
@@ -190,20 +217,23 @@ function ChatView({
             if (isTarget && streaming.mode === "regenerate") override = streaming.text;
             if (isTarget && streaming.mode === "continue") override = (message.swipes[message.swipeId] ?? "") + streaming.text;
             return (
-              <MessageItem
-                key={message.id}
-                message={message}
-                character={character}
-                user={user}
-                override={override}
-                streaming={isTarget}
-                swipeLabel={isTarget && streaming.mode === "regenerate" ? `${message.swipes.length + 1}/${message.swipes.length + 1}` : undefined}
-                canSwipe={!busy && message.id === lastAssistant?.id && (messages.length > 1 || message.swipes.length > 1)}
-                busy={busy}
-                onSwipe={(dir) => onSwipe(message, dir)}
-                onChange={setMessage}
-                isGreetingOnly={messages.length === 1}
-              />
+              <div key={message.id} id={`m-${message.id}`} className="scroll-mt-24">
+                <MessageItem
+                  message={message}
+                  character={character}
+                  user={user}
+                  override={override}
+                  streaming={isTarget}
+                  swipeLabel={
+                    isTarget && streaming.mode === "regenerate" ? `${message.swipes.length + 1}/${message.swipes.length + 1}` : undefined
+                  }
+                  canSwipe={!busy && message.id === lastAssistant?.id && (messages.length > 1 || message.swipes.length > 1)}
+                  busy={busy}
+                  onSwipe={(dir) => onSwipe(message, dir)}
+                  onChange={setMessage}
+                  isGreetingOnly={messages.length === 1}
+                />
+              </div>
             );
           })}
           {streaming?.pendingUser && <UserBubble user={user} text={streaming.pendingUser} />}
@@ -234,8 +264,9 @@ function ChatView({
   );
 }
 
-function ChatHeader({ detail }: { detail: ChatDetail }) {
-  const { openMenu } = useLayout();
+function ChatHeader({ detail, canRegenerate }: { detail: ChatDetail; canRegenerate: boolean }) {
+  const { openMenu, openSearch } = useLayout();
+  const [inspecting, setInspecting] = useState(false);
   const { chat, character } = detail;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -268,7 +299,10 @@ function ChatHeader({ detail }: { detail: ChatDetail }) {
         <Avatar name={character.name} src={character.avatar} size={38} />
       </Link>
       <div className="min-w-0 flex-1">
-        <Link to={`/characters/${character.id}`} className="block truncate font-display text-lg leading-tight font-semibold hover:text-accent">
+        <Link
+          to={`/characters/${character.id}`}
+          className="block truncate font-display text-lg leading-tight font-semibold hover:text-accent"
+        >
           {character.name}
         </Link>
         {editing ? (
@@ -287,7 +321,11 @@ function ChatHeader({ detail }: { detail: ChatDetail }) {
             className="w-full max-w-xs rounded border-b border-accent-2 bg-transparent text-xs text-ink outline-none"
           />
         ) : (
-          <button onClick={() => setEditing(true)} className="block max-w-full truncate text-xs text-faint hover:text-muted" title="Rename chat">
+          <button
+            onClick={() => setEditing(true)}
+            className="block max-w-full truncate text-xs text-faint hover:text-muted"
+            title="Rename chat"
+          >
             {chat.title}
           </button>
         )}
@@ -302,12 +340,19 @@ function ChatHeader({ detail }: { detail: ChatDetail }) {
         <span className={clsx("size-1.5 rounded-full", connection ? "bg-success" : "bg-danger")} />
         <span className="max-w-48 truncate">{connection ? connection.model || connection.name : "No model connected"}</span>
       </Link>
+      <IconButton label="Search this chat" onClick={() => openSearch({ chatId: chat.id, label: `this chat with ${character.name}` })}>
+        <Search size={17} />
+      </IconButton>
+      <IconButton label="Prompt inspector" onClick={() => setInspecting(true)}>
+        <ScanEye size={18} />
+      </IconButton>
       <IconButton label="New chat" onClick={() => newChat(character.id)}>
         <MessageSquarePlus size={18} />
       </IconButton>
       <IconButton label="Delete chat" onClick={remove} className="hover:text-danger">
         <Trash2 size={17} />
       </IconButton>
+      {inspecting && <PromptInspector chatId={chat.id} canRegenerate={canRegenerate} onClose={() => setInspecting(false)} />}
     </header>
   );
 }
@@ -633,7 +678,11 @@ function PersonaSwitcher() {
                 {p.id === active.id && <Check size={14} className="text-accent" />}
               </button>
             ))}
-            <Link to="/settings" onClick={() => setOpen(false)} className="mt-1 block rounded-lg px-2.5 py-2 text-xs text-faint hover:bg-surface-2 hover:text-ink">
+            <Link
+              to="/settings"
+              onClick={() => setOpen(false)}
+              className="mt-1 block rounded-lg px-2.5 py-2 text-xs text-faint hover:bg-surface-2 hover:text-ink"
+            >
               Manage personas…
             </Link>
           </div>
@@ -641,4 +690,23 @@ function PersonaSwitcher() {
       )}
     </div>
   );
+}
+
+/** Marks every occurrence of `query` inside `root` using the CSS Custom Highlight API, for a few seconds. */
+function highlightMatches(root: HTMLElement, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q || typeof Highlight === "undefined" || !("highlights" in CSS)) return;
+  const ranges: Range[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent?.toLowerCase() ?? "";
+    for (let at = text.indexOf(q); at >= 0; at = text.indexOf(q, at + q.length)) {
+      const range = new Range();
+      range.setStart(node, at);
+      range.setEnd(node, at + q.length);
+      ranges.push(range);
+    }
+  }
+  CSS.highlights.set("search-hit", new Highlight(...ranges));
+  setTimeout(() => CSS.highlights.delete("search-hit"), 5000);
 }

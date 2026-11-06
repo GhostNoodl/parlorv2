@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 
 type Variant = "primary" | "ghost" | "soft" | "danger";
 
@@ -45,11 +45,11 @@ export function IconButton({ label, className, ...props }: ButtonHTMLAttributes<
 const fieldClass =
   "w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm text-ink placeholder:text-faint transition-colors focus:border-accent-2/60 focus:outline-none focus:ring-2 focus:ring-accent-2/20";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input className={clsx(fieldClass, className)} {...props} />;
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return <textarea className={clsx(fieldClass, "resize-y leading-relaxed", className)} {...props} />;
 }
 
@@ -65,4 +65,24 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={clsx("rounded-2xl border border-line bg-surface/80 p-5 shadow-xl shadow-black/5", className)}>{children}</div>;
+}
+
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!checked)}
+      className={clsx(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-2",
+        checked ? "bg-gradient-accent" : "bg-surface-3",
+      )}
+    >
+      <span className={clsx("size-4 rounded-full bg-white shadow transition-transform", checked ? "translate-x-[18px]" : "translate-x-0.5")} />
+    </button>
+  );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { emptyCard } from "./defaults";
+import { defaultPromptBlocks, emptyCard, newTextBlock } from "./defaults";
 import { applyMacros } from "./macros";
+import { parsePresetJson, PresetError, toPresetFile } from "./presets";
 import { buildPrompt, mergeConsecutive } from "./prompt";
 
 const card = {
@@ -14,7 +15,7 @@ const base = {
   card,
   userName: "Andrew",
   userDescription: "",
-  systemPrompt: "You are {{char}}. Talk to {{user}}.",
+  blocks: defaultPromptBlocks("You are {{char}}. Talk to {{user}}."),
   history: [],
   contextSize: 8000,
   maxTokens: 500,
@@ -23,6 +24,13 @@ const base = {
 describe("applyMacros", () => {
   it("replaces modern and legacy macros case-insensitively", () => {
     expect(applyMacros("{{char}} <BOT> {{ USER }} <user>", { char: "A", user: "B" })).toBe("A A B B");
+  });
+
+  it("handles dates, comments and random picks", () => {
+    const now = new Date(2026, 10, 6, 21, 5);
+    expect(applyMacros("{{weekday}}, {{date}}{{// hidden}}", { char: "A", user: "B", now })).toBe("Friday, November 6, 2026");
+    expect(["x", "y"]).toContain(applyMacros("{{random:x,y}}", { char: "A", user: "B" }));
+    expect(applyMacros("{{random::only one}}", { char: "A", user: "B" })).toBe("only one");
   });
 });
 
@@ -58,6 +66,81 @@ describe("buildPrompt", () => {
       history: [{ role: "user", content: "Hi" }],
     });
     expect(out.messages).toEqual([{ role: "user", content: "Hi\n\n[Stay spooky, Andrew.]" }]);
+  });
+});
+
+describe("prompt presets", () => {
+  const history = [
+    { role: "assistant" as const, content: "Evening." },
+    { role: "user" as const, content: "Hi" },
+  ];
+
+  it("follows the block order and skips disabled blocks", () => {
+    const blocks = defaultPromptBlocks("Main.");
+    const [main, character, ...rest] = blocks;
+    const out = buildPrompt({ ...base, blocks: [character!, { ...main!, enabled: false }, ...rest], history });
+    expect(out.system.startsWith('<character name="Basil">')).toBe(true);
+    expect(out.system).not.toContain("Main.");
+  });
+
+  it("puts blocks below the history into the last user turn", () => {
+    const blocks = [...defaultPromptBlocks("Main."), newTextBlock("Note", "Keep it short, {{char}}.")];
+    const out = buildPrompt({ ...base, blocks, history });
+    expect(out.messages.at(-1)).toEqual({ role: "user", content: "Hi\n\nKeep it short, Basil." });
+    expect(out.breakdown.map((p) => p.placement)).toEqual(["system", "system", "history", "after"]);
+    expect(out.breakdown.find((p) => p.kind === "history")?.tokens).toBeGreaterThan(0);
+  });
+
+  it("sends no history when the history block is off", () => {
+    const blocks = defaultPromptBlocks().map((b) => (b.kind === "history" ? { ...b, enabled: false } : b));
+    expect(buildPrompt({ ...base, blocks, history }).messages).toEqual([]);
+  });
+
+  it("round-trips Parlor preset files", () => {
+    const file = JSON.parse(JSON.stringify(toPresetFile({ name: "Mine", blocks: defaultPromptBlocks("Hello") })));
+    const parsed = parsePresetJson(file);
+    expect(parsed.name).toBe("Mine");
+    expect(parsed.blocks.map((b) => b.kind)).toEqual(defaultPromptBlocks().map((b) => b.kind));
+    expect(parsed.blocks[0]!.content).toBe("Hello");
+  });
+
+  it("imports SillyTavern chat-completion presets", () => {
+    const st = {
+      prompts: [
+        { identifier: "main", name: "Main Prompt", content: "Write {{char}}'s next reply.", system_prompt: true },
+        { identifier: "nsfw", name: "Auxiliary Prompt", content: "", system_prompt: true },
+        { identifier: "charDescription", marker: true },
+        { identifier: "charPersonality", marker: true },
+        { identifier: "worldInfoBefore", marker: true },
+        { identifier: "chatHistory", marker: true },
+        { identifier: "jailbreak", name: "Post-History Instructions", content: "Be bold." },
+      ],
+      prompt_order: [
+        {
+          character_id: 100001,
+          order: [
+            { identifier: "main", enabled: true },
+            { identifier: "nsfw", enabled: true },
+            { identifier: "worldInfoBefore", enabled: true },
+            { identifier: "charDescription", enabled: true },
+            { identifier: "charPersonality", enabled: true },
+            { identifier: "chatHistory", enabled: true },
+            { identifier: "jailbreak", enabled: false },
+          ],
+        },
+      ],
+    };
+    const { name, blocks } = parsePresetJson(st, "Celia");
+    expect(name).toBe("Celia");
+    expect(blocks.map((b) => [b.kind, b.enabled])).toEqual([
+      ["main", true],
+      ["character", true],
+      ["history", true],
+      ["postHistory", true],
+      ["text", false],
+    ]);
+    expect(blocks.at(-1)!.content).toBe("Be bold.");
+    expect(() => parsePresetJson({ hello: 1 })).toThrow(PresetError);
   });
 });
 

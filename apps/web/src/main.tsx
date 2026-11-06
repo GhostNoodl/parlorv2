@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { Upload } from "lucide-react";
-import { StrictMode, useRef, useState, type DragEvent } from "react";
+import { StrictMode, useEffect, useRef, useState, type DragEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Outlet, RouterProvider, useMatch } from "react-router";
+import { SearchPalette, type SearchScope } from "./components/SearchPalette";
 import { Sidebar } from "./components/Sidebar";
 import { api } from "./lib/api";
 import { keys, useImportCharacters } from "./lib/hooks";
@@ -13,6 +14,7 @@ import { ToastProvider } from "./lib/toast";
 import { CharacterPage } from "./pages/CharacterPage";
 import { ChatPage } from "./pages/ChatPage";
 import { HomePage } from "./pages/HomePage";
+import { PromptsPage } from "./pages/PromptsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import "./index.css";
 
@@ -26,11 +28,30 @@ function Layout() {
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [search, setSearch] = useState<{ scope: SearchScope | null } | null>(null);
   const dragDepth = useRef(0);
   const importCharacters = useImportCharacters();
   const chatId = useMatch("/chat/:chatId")?.params.chatId;
   const characterId = useMatch("/characters/:characterId")?.params.characterId;
   const chat = useQuery({ queryKey: keys.chat(chatId ?? ""), queryFn: () => api.chat(chatId!), enabled: Boolean(chatId) });
+
+  const chatScope = chatId && chat.data ? { chatId, label: `this chat with ${chat.data.character.name}` } : null;
+  const openSearch = (scope?: SearchScope) => {
+    setMenuOpen(false);
+    setSearch({ scope: scope ?? chatScope });
+  };
+
+  // Ctrl/⌘ K opens search from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearch((open) => (open ? null : { scope: chatScope }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chatScope?.chatId, chatScope?.label]);
 
   // Drop card PNGs or JSON anywhere to import them.
   const dropHandlers = {
@@ -64,10 +85,12 @@ function Layout() {
         onToggleTheme={toggle}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
+        onSearch={() => openSearch()}
       />
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <Outlet context={{ openMenu: () => setMenuOpen(true) } satisfies LayoutContext} />
+        <Outlet context={{ openMenu: () => setMenuOpen(true), openSearch } satisfies LayoutContext} />
       </main>
+      {search && <SearchPalette scope={search.scope} onClose={() => setSearch(null)} />}
       <div
         className={clsx(
           "pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-bg/70 p-6 backdrop-blur-sm transition-opacity",
@@ -95,6 +118,7 @@ const router = createBrowserRouter([
       { path: "characters/new", element: <CharacterPage /> },
       { path: "characters/:characterId", element: <CharacterPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "prompts", element: <PromptsPage /> },
     ],
   },
 ]);

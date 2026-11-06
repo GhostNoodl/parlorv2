@@ -1,4 +1,4 @@
-import type { CharacterCard, GenerationSettings, MessageRole, ProviderKind } from "@parlor/shared";
+import type { CharacterCard, GenerationSettings, MessageRole, PromptBlock, ProviderKind } from "@parlor/shared";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -65,4 +65,12 @@ export const personas = sqliteTable("personas", {
   description: text("description").notNull().default(""),
   avatar: text("avatar"),
   createdAt: integer("created_at").notNull().default(now),
+});
+
+export const presets = sqliteTable("presets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  blocks: text("blocks", { mode: "json" }).$type<PromptBlock[]>().notNull(),
+  createdAt: integer("created_at").notNull().default(now),
+  updatedAt: integer("updated_at").notNull().default(now),
 });

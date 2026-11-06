@@ -2,7 +2,7 @@ import { emptyCard, type CharacterCard } from "@parlor/shared";
 import { inArray } from "drizzle-orm";
 import { db } from "./db/client";
 import * as t from "./db/schema";
-import { getActivePersona, id, updateSettings } from "./lib/store";
+import { getActivePersona, getActivePreset, id, updateSettings } from "./lib/store";
 
 const basil: CharacterCard = {
   ...emptyCard("Basil"),
@@ -26,6 +26,7 @@ const basil: CharacterCard = {
 export async function seed() {
   await migrateLegacyPersona();
   await getActivePersona();
+  await getActivePreset();
   const existing = await db.query.characters.findFirst();
   if (existing) return;
   await db.insert(t.characters).values({

@@ -36,7 +36,10 @@ Your data (SQLite database plus the key that encrypts your API keys) lives in `.
 - Roleplay-aware text styling: *actions* in italics, "speech" highlighted
 - Character cards: import V1/V2/V3 card PNGs and JSON (button or drag and drop, many at once), export as PNG (V2 + V3, works in SillyTavern) or V3 JSON
 - A character editor with portrait avatars, alternate greetings, example dialogue, prompt overrides and an unsaved-changes guard
-- Personas with avatars, switchable from the chat box, plus an editable system prompt and `{{char}}` / `{{user}}` macros
+- Personas with avatars, switchable from the chat box
+- Prompt presets: rearrange, toggle and add blocks before or after the chat history, with macros like `{{char}}`, `{{user}}`, `{{date}}` and `{{random:a,b}}`. Import SillyTavern chat-completion presets, export your own as JSON
+- A prompt inspector that shows exactly what the model will read, with a token budget per block
+- Search every message in every chat (Ctrl/⌘ K), swipes included, and jump straight to the line
 - Token-aware trimming so long chats fit the model's context
 - API keys encrypted at rest (AES-256-GCM) and never sent back to the browser
 - Dark ("Velvet") and light ("Parchment") themes, mobile-friendly layout
@@ -44,6 +47,10 @@ Your data (SQLite database plus the key that encrypts your API keys) lives in `.
 <p>
   <img src="docs/screenshots/chat-light.png" alt="Light theme" width="49%">
   <img src="docs/screenshots/settings.png" alt="Connection settings" width="49%">
+</p>
+<p>
+  <img src="docs/screenshots/prompts.png" alt="Prompt preset editor" width="49%">
+  <img src="docs/screenshots/inspector.png" alt="Prompt inspector" width="49%">
 </p>
 
 ### Notes on Claude
@@ -55,7 +62,7 @@ Claude's current API doesn't accept temperature or top-p, so Claude connections 
 - [x] **Phase 0: Skeleton.** Monorepo, server, UI, SQLite, settings
 - [x] **Phase 1: Talk to a model.** Claude + OpenAI-compatible adapters, streaming, swipes
 - [x] **Phase 2: Characters and personas.** V2/V3 card import/export (PNG + JSON), character editor, avatars, multiple personas
-- [ ] **Phase 3: Real RP chat.** Prompt preset editor, prompt inspector, chat search
+- [x] **Phase 3: Real RP chat.** Prompt preset editor, prompt inspector, chat search
 - [ ] **Phase 4: Lorebooks.** Keyword-triggered world info, embedded card lorebooks
 - [ ] **Later:** branching, group chats, regex scripts, summaries and memory, VN mode with sprites, an AI game master
 

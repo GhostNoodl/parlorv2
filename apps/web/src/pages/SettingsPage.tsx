@@ -1,7 +1,6 @@
 import {
   CONNECTION_PRESETS,
   DEFAULT_GENERATION_SETTINGS,
-  DEFAULT_SYSTEM_PROMPT,
   type Connection,
   type Effort,
   type GenerationSettings,
@@ -10,11 +9,12 @@ import {
 } from "@parlor/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { CheckCircle2, CircleAlert, Loader2, Menu, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
+import { CheckCircle2, CircleAlert, Loader2, Menu, Pencil, Plus, ScrollText, Trash2, Zap } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Card, Field, IconButton, Input, Textarea } from "../components/ui";
 import { api, type ConnectionInput, type ProbeResult } from "../lib/api";
-import { keys, useActivePersona, useConnections, usePersonas, useSettings } from "../lib/hooks";
+import { keys, useActivePersona, useActivePreset, useConnections, usePersonas, useSettings } from "../lib/hooks";
+import { Link } from "react-router";
 import { toPng } from "../lib/image";
 import { useToast } from "../lib/toast";
 import { Avatar } from "../components/Avatar";
@@ -40,7 +40,17 @@ export function SettingsPage() {
   );
 }
 
-function Section({ title, description, action, children }: { title: string; description: string; action?: ReactNode; children: ReactNode }) {
+function Section({
+  title,
+  description,
+  action,
+  children,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="animate-rise">
       <div className="mb-4 flex items-end justify-between gap-4">
@@ -201,7 +211,12 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
     setProbing(true);
     setProbe(null);
     try {
-      const result = await api.probe({ provider: form.provider, baseUrl: form.baseUrl, apiKey: form.apiKey || undefined, connectionId: existing?.id });
+      const result = await api.probe({
+        provider: form.provider,
+        baseUrl: form.baseUrl,
+        apiKey: form.apiKey || undefined,
+        connectionId: existing?.id,
+      });
       setProbe(result);
       if (result.ok && !form.model && result.models[0]) set({ model: result.models[0] });
     } catch (err) {
@@ -238,7 +253,9 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
                 onClick={() => pickPreset(i)}
                 className={clsx(
                   "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                  preset === i ? "border-accent/50 bg-accent/10 text-ink" : "border-line text-muted hover:border-line-strong hover:text-ink",
+                  preset === i
+                    ? "border-accent/50 bg-accent/10 text-ink"
+                    : "border-line text-muted hover:border-line-strong hover:text-ink",
                 )}
               >
                 {p.label}
@@ -265,7 +282,10 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
         <Field label="Base URL" hint={isClaude ? "Leave as is unless you use a proxy." : "Usually ends in /v1."}>
           <Input value={form.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="http://localhost:11434/v1" />
         </Field>
-        <Field label="API key" hint={existing?.hasApiKey ? "A key is saved. Leave blank to keep it." : isClaude ? "Required." : "Optional for local servers."}>
+        <Field
+          label="API key"
+          hint={existing?.hasApiKey ? "A key is saved. Leave blank to keep it." : isClaude ? "Required." : "Optional for local servers."}
+        >
           <Input
             type="password"
             autoComplete="off"
@@ -286,7 +306,9 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
               placeholder={isClaude ? "claude-opus-5-5" : "Pick or type a model id"}
             />
             <datalist id="model-options">
-              {probe?.models.map((m) => <option key={m} value={m} />)}
+              {probe?.models.map((m) => (
+                <option key={m} value={m} />
+              ))}
             </datalist>
             <Button onClick={test} disabled={probing || !form.baseUrl} className="shrink-0">
               {probing ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
@@ -370,31 +392,6 @@ function ConnectionForm({ existing, onDone }: { existing?: Connection; onDone: (
 
 // ---------------------------------------------------------------------------
 // Persona and prompt
-
-function useSettingsDraft<K extends "systemPrompt">(key: K) {
-  const settings = useSettings();
-  const queryClient = useQueryClient();
-  const [value, setValue] = useState<string>("");
-  const saved = settings.data?.[key] ?? "";
-  useEffect(() => setValue(saved), [saved]);
-  const save = useMutation({
-    mutationFn: (v: string) => api.updateSettings({ [key]: v }),
-    onSuccess: (data) => queryClient.setQueryData(keys.settings, data),
-  });
-  return { value, setValue, dirty: value !== saved, save: () => save.mutate(value), saving: save.isPending };
-}
-
-function SaveBar({ dirty, saving, onSave, extra }: { dirty: boolean; saving: boolean; onSave: () => void; extra?: ReactNode }) {
-  return (
-    <div className="flex items-center justify-end gap-2">
-      {extra}
-      <Button variant="primary" size="sm" disabled={!dirty || saving} onClick={onSave}>
-        {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-        {dirty ? "Save" : "Saved"}
-      </Button>
-    </div>
-  );
-}
 
 function PersonaSection() {
   const personas = usePersonas();
@@ -524,13 +521,25 @@ function PersonaForm({ existing, canDelete = false, onDone }: { existing?: Perso
   return (
     <Card className="animate-rise border-accent-2/30">
       <div className="flex flex-col gap-5 sm:flex-row">
-        <AvatarPicker name={name} src={avatar} onPick={pick} onRemove={removeAvatar} shape="square" className="w-28 shrink-0 self-center sm:self-start" />
+        <AvatarPicker
+          name={name}
+          src={avatar}
+          onPick={pick}
+          onRemove={removeAvatar}
+          shape="square"
+          className="w-28 shrink-0 self-center sm:self-start"
+        />
         <div className="flex-1 space-y-4">
           <Field label="Name">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="What do characters call you?" autoFocus />
           </Field>
           <Field label="About you" hint="Optional. Appearance, personality, anything characters should know.">
-            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A wandering bard with a borrowed lute and a talent for trouble." />
+            <Textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="A wandering bard with a borrowed lute and a talent for trouble."
+            />
           </Field>
           <div className="flex items-center gap-2">
             {existing && canDelete && (
@@ -554,24 +563,22 @@ function PersonaForm({ existing, canDelete = false, onDone }: { existing?: Perso
 }
 
 function PromptSection() {
-  const prompt = useSettingsDraft("systemPrompt");
+  const preset = useActivePreset();
+  const on = preset?.blocks.filter((b) => b.enabled).length ?? 0;
   return (
-    <Section title="System prompt" description="The instructions sent before every chat. {{char}} and {{user}} are filled in for you.">
-      <Card className="space-y-4">
-        <Textarea rows={7} value={prompt.value} onChange={(e) => prompt.setValue(e.target.value)} className="font-mono text-[13px]" />
-        <SaveBar
-          dirty={prompt.dirty}
-          saving={prompt.saving}
-          onSave={prompt.save}
-          extra={
-            prompt.value !== DEFAULT_SYSTEM_PROMPT && (
-              <Button variant="ghost" size="sm" onClick={() => prompt.setValue(DEFAULT_SYSTEM_PROMPT)}>
-                <RotateCcw size={14} /> Reset to default
-              </Button>
-            )
-          }
-        />
-      </Card>
+    <Section title="Prompts" description="The instructions and card details sent with every message, as a preset you can rearrange.">
+      <Link to="/prompts" className="group block">
+        <Card className="flex items-center gap-4 transition-colors group-hover:border-line-strong">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent/12 text-accent">
+            <ScrollText size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-display font-semibold">{preset?.name ?? "Loading…"}</div>
+            <div className="text-sm text-muted">{preset ? `${on} of ${preset.blocks.length} blocks on` : ""}</div>
+          </div>
+          <span className="text-sm font-medium text-accent">Edit prompts →</span>
+        </Card>
+      </Link>
     </Section>
   );
 }

@@ -92,8 +92,45 @@ export interface Message {
   createdAt: number;
 }
 
+/**
+ * One piece of a prompt preset. Blocks above the chat history become the
+ * system prompt; blocks below it are added to the end of the latest user turn.
+ */
+export type PromptBlockKind =
+  /** Free text with macros. */
+  | "text"
+  /** Free text that a card's own system prompt replaces ({{original}} splices it back in). */
+  | "main"
+  /** The character's description, personality and scenario. */
+  | "character"
+  /** The active persona's description. */
+  | "persona"
+  /** The card's example dialogue. */
+  | "examples"
+  /** Where the chat history goes. */
+  | "history"
+  /** The card's post-history instructions. */
+  | "postHistory";
+
+export interface PromptBlock {
+  id: string;
+  kind: PromptBlockKind;
+  name: string;
+  enabled: boolean;
+  /** Only used by "text" and "main" blocks. */
+  content: string;
+}
+
+export interface PromptPreset {
+  id: string;
+  name: string;
+  blocks: PromptBlock[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AppSettings {
-  systemPrompt: string;
+  activePresetId: string | null;
   activeConnectionId: string | null;
   activePersonaId: string | null;
 }
@@ -120,4 +157,40 @@ export interface BuiltPrompt {
   estimatedTokens: number;
   /** How many history messages were dropped to fit the context. */
   droppedMessages: number;
+  /** Per-block token estimates, in preset order, for the prompt inspector. */
+  breakdown: PromptPart[];
+}
+
+export interface PromptPart {
+  blockId: string;
+  name: string;
+  kind: PromptBlockKind;
+  tokens: number;
+  /** "history" counts the kept chat messages. */
+  placement: "system" | "history" | "after";
+}
+
+/** One message that matched a search, with where to find it. */
+export interface SearchResult {
+  messageId: number;
+  role: MessageRole;
+  /** The swipe that matched (the visible one when it matches). */
+  swipeId: number;
+  snippet: string;
+  createdAt: number;
+  chatId: string;
+  chatTitle: string;
+  characterId: string;
+  characterName: string;
+  characterAvatar: string | null;
+}
+
+/** What the prompt inspector shows. */
+export interface PromptPreview {
+  mode: GenerateMode;
+  prompt: BuiltPrompt;
+  preset: { id: string; name: string };
+  connection: { name: string; model: string; provider: ProviderKind } | null;
+  contextSize: number;
+  maxTokens: number;
 }

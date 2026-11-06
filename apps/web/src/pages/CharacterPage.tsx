@@ -3,11 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { BookOpen, Copy, Download, FileJson, Loader2, Menu, MessageCircle, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useBlocker, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { Button, Card, Field, IconButton, Input, Textarea } from "../components/ui";
 import { api } from "../lib/api";
-import { keys, useOpenCharacter } from "../lib/hooks";
+import { keys, useOpenCharacter, useUnsavedGuard } from "../lib/hooks";
 import { toPng } from "../lib/image";
 import { useLayout } from "../lib/layout";
 import { useToast } from "../lib/toast";
@@ -41,19 +41,7 @@ function CharacterEditor({ character }: { character: Character | null }) {
   const dirty = JSON.stringify(card) !== JSON.stringify(initial) || pendingAvatar !== null;
   const set = (patch: Partial<CharacterCard>) => setCard((c) => ({ ...c, ...patch }));
 
-  // Warn before leaving with unsaved edits.
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && !saving && currentLocation.pathname !== nextLocation.pathname);
-  useEffect(() => {
-    if (blocker.state !== "blocked") return;
-    if (confirm("Discard your unsaved changes?")) blocker.proceed();
-    else blocker.reset();
-  }, [blocker]);
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useUnsavedGuard(dirty && !saving);
 
   const tokens = estimateTokens([card.description, card.personality, card.scenario, card.mes_example, card.system_prompt].join("\n"));
 

@@ -1,4 +1,4 @@
-import { buildPrompt, type GenerateEvent, type Message, type PromptMessage } from "@parlor/shared";
+import { buildPrompt, DEFAULT_GENERATION_SETTINGS, type Character, type GenerateEvent, type GenerateMode, type Message, type PromptMessage } from "@parlor/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -7,6 +7,7 @@ import { db } from "../db/client";
 import * as t from "../db/schema";
 import {
   getActivePersona,
+  getActivePreset,
   getCharacter,
   getChat,
   getConnectionRow,
@@ -33,12 +34,63 @@ function cleanReply(text: string, name: string): string {
   return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).replace(/^\s+/, "") : trimmed;
 }
 
+/** Works out what a generation acts on and which history the model sees. */
+function planGeneration(all: Message[], mode: GenerateMode) {
+  const last = all.at(-1);
+  // Regenerate and continue both work on the last reply; without one they act like send.
+  const target = (mode === "regenerate" || mode === "continue") && last?.role === "assistant" ? last : null;
+  const effectiveMode: GenerateMode = target ? mode : "send";
+  const history: PromptMessage[] = (effectiveMode === "regenerate" ? all.slice(0, -1) : all).map((m) => ({
+    role: m.role,
+    content: activeText(m),
+  }));
+  if (effectiveMode === "continue") history.push({ role: "user", content: CONTINUE_INSTRUCTION });
+  return { target, effectiveMode, history };
+}
+
+async function promptFor(character: Character, history: PromptMessage[], limits: { contextSize: number; maxTokens: number }) {
+  const [persona, preset] = await Promise.all([getActivePersona(), getActivePreset()]);
+  const prompt = buildPrompt({
+    card: character.card,
+    userName: persona.name,
+    userDescription: persona.description,
+    blocks: preset.blocks,
+    history,
+    contextSize: limits.contextSize,
+    maxTokens: limits.maxTokens,
+  });
+  return { prompt, preset };
+}
+
 export const chatRoutes = new Hono()
   .get("/:id", async (c) => {
     const chat = await getChat(c.req.param("id"));
     if (!chat) return c.json({ error: "Chat not found" }, 404);
     const [character, messages] = await Promise.all([getCharacter(chat.characterId), getMessages(chat.id)]);
     return c.json({ chat, character, messages });
+  })
+
+  /** The prompt inspector: exactly what the model would see for the next reply. */
+  .get("/:id/prompt", async (c) => {
+    const chat = await getChat(c.req.param("id"));
+    if (!chat) return c.json({ error: "Chat not found" }, 404);
+    const character = await getCharacter(chat.characterId);
+    if (!character) return c.json({ error: "Character not found" }, 404);
+    const mode = z.enum(["send", "regenerate", "continue"]).catch("send").parse(c.req.query("mode"));
+
+    const settings = await getSettings();
+    const row = settings.activeConnectionId ? await getConnectionRow(settings.activeConnectionId) : undefined;
+    const limits = row?.settings ?? DEFAULT_GENERATION_SETTINGS;
+    const { effectiveMode, history } = planGeneration(await getMessages(chat.id), mode);
+    const { prompt, preset } = await promptFor(character, history, limits);
+    return c.json({
+      mode: effectiveMode,
+      prompt,
+      preset: { id: preset.id, name: preset.name },
+      connection: row ? { name: row.name, model: row.model, provider: row.provider } : null,
+      contextSize: limits.contextSize,
+      maxTokens: limits.maxTokens,
+    });
   })
 
   .patch("/:id", async (c) => {
@@ -61,7 +113,7 @@ export const chatRoutes = new Hono()
     const character = await getCharacter(chat.characterId);
     if (!character) return c.json({ error: "Character not found" }, 404);
 
-    const [settings, persona] = await Promise.all([getSettings(), getActivePersona()]);
+    const settings = await getSettings();
     const connectionRow = settings.activeConnectionId ? await getConnectionRow(settings.activeConnectionId) : undefined;
     if (!connectionRow) return c.json({ error: "Set up a model connection in Settings first." }, 400);
     if (!connectionRow.model) return c.json({ error: `Pick a model for "${connectionRow.name}" in Settings.` }, 400);
@@ -71,27 +123,8 @@ export const chatRoutes = new Hono()
       await db.insert(t.messages).values({ chatId: chat.id, role: "user", swipes: [text.trim()], swipeId: 0 });
     }
 
-    const all = await getMessages(chat.id);
-    const last = all.at(-1);
-    // Regenerate and continue both work on the last reply; without one they act like send.
-    const target = (mode === "regenerate" || mode === "continue") && last?.role === "assistant" ? last : null;
-    const effectiveMode = target ? mode : "send";
-
-    const history: PromptMessage[] = (effectiveMode === "regenerate" ? all.slice(0, -1) : all).map((m) => ({
-      role: m.role,
-      content: activeText(m),
-    }));
-    if (effectiveMode === "continue") history.push({ role: "user", content: CONTINUE_INSTRUCTION });
-
-    const prompt = buildPrompt({
-      card: character.card,
-      userName: persona.name,
-      userDescription: persona.description,
-      systemPrompt: settings.systemPrompt,
-      history,
-      contextSize: connection.settings.contextSize,
-      maxTokens: connection.settings.maxTokens,
-    });
+    const { target, effectiveMode, history } = planGeneration(await getMessages(chat.id), mode);
+    const { prompt } = await promptFor(character, history, connection.settings);
 
     return streamSSE(c, async (stream) => {
       const abort = new AbortController();

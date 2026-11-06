@@ -148,8 +148,35 @@ body {
   animation: rise 0.25s ease-out both;
 }
 
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* A message you jumped to from search glows for a moment. */
+.flash-hit {
+  border-radius: 1rem;
+  animation: flash-hit 2.4s ease-out;
+}
+
+@keyframes flash-hit {
+  0%,
+  35% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+}
+
+::highlight(search-hit) {
+  background-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--text);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rise,
+  .flash-hit,
   .typing-caret::after {
     animation: none;
   }
