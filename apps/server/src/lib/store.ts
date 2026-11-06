@@ -1,12 +1,15 @@
 import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_PERSONA_NAME,
+  DEFAULT_SYSTEM_PROMPT,
+  defaultPromptBlocks,
   type AppSettings,
   type Character,
   type Chat,
   type Connection,
   type Message,
   type Persona,
+  type PromptPreset,
 } from "@parlor/shared";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../db/client";
@@ -29,6 +32,11 @@ export async function getSettings(): Promise<AppSettings> {
 export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
+    if (value === null) {
+      // Unset means "use the default", which a missing row already says.
+      await db.delete(t.settings).where(eq(t.settings.key, key));
+      continue;
+    }
     await db
       .insert(t.settings)
       .values({ key, value })
@@ -55,6 +63,30 @@ export async function getActivePersona(): Promise<Persona> {
   await db.insert(t.personas).values(persona);
   await updateSettings({ activePersonaId: persona.id });
   return persona;
+}
+
+// ---- prompt presets ----
+
+/** The preset used for generation, creating the default one if needed. */
+export async function getActivePreset(): Promise<PromptPreset> {
+  const settings = await getSettings();
+  if (settings.activePresetId) {
+    const active = await db.query.presets.findFirst({ where: eq(t.presets.id, settings.activePresetId) });
+    if (active) return active;
+  }
+  const first = await db.query.presets.findFirst({ orderBy: asc(t.presets.createdAt) });
+  if (first) {
+    await updateSettings({ activePresetId: first.id });
+    return first;
+  }
+  // Before presets existed there was a single editable system prompt; keep it.
+  const legacy = await db.query.settings.findFirst({ where: eq(t.settings.key, "systemPrompt") });
+  const mainPrompt = typeof legacy?.value === "string" ? legacy.value : DEFAULT_SYSTEM_PROMPT;
+  const preset = { id: id(), name: "Parlor default", blocks: defaultPromptBlocks(mainPrompt), createdAt: Date.now(), updatedAt: Date.now() };
+  await db.insert(t.presets).values(preset);
+  await updateSettings({ activePresetId: preset.id });
+  if (legacy) await db.delete(t.settings).where(eq(t.settings.key, "systemPrompt"));
+  return preset;
 }
 
 // ---- connections ----

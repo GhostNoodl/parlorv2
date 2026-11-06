@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { MessageSquarePlus, Moon, Pencil, Search, Settings, Sun, Upload, UserPlus, X } from "lucide-react";
+import { MessageSquarePlus, Moon, Pencil, ScrollText, Search, Settings, Sun, Upload, UserPlus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { api } from "../lib/api";
@@ -8,6 +8,8 @@ import { keys, useCharacters, useImportCharacters, useNewChat, useOpenCharacter 
 import type { Theme } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { IconButton } from "./ui";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export function Logo() {
   return (
@@ -50,12 +52,14 @@ export function Sidebar({
   onToggleTheme,
   open,
   onClose,
+  onSearch,
 }: {
   activeCharacterId: string | null;
   theme: Theme;
   onToggleTheme: () => void;
   open: boolean;
   onClose: () => void;
+  onSearch: () => void;
 }) {
   const characters = useCharacters();
   const openCharacter = useOpenCharacter();
@@ -74,7 +78,10 @@ export function Sidebar({
       {/* Mobile backdrop */}
       <div
         onClick={onClose}
-        className={clsx("fixed inset-0 z-30 bg-black/50 backdrop-blur-sm transition-opacity lg:hidden", open ? "opacity-100" : "pointer-events-none opacity-0")}
+        className={clsx(
+          "fixed inset-0 z-30 bg-black/50 backdrop-blur-sm transition-opacity lg:hidden",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
       />
       <aside
         className={clsx(
@@ -87,6 +94,17 @@ export function Sidebar({
           <IconButton label="Close menu" onClick={onClose} className="lg:hidden">
             <X size={18} />
           </IconButton>
+        </div>
+
+        <div className="px-3 pt-1">
+          <button
+            onClick={onSearch}
+            className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2 text-sm text-faint transition-colors hover:border-line-strong hover:text-muted"
+          >
+            <Search size={15} />
+            <span className="flex-1 text-left">Search chats</span>
+            <kbd className="rounded-md border border-line px-1.5 font-sans text-[11px] max-lg:hidden">{isMac ? "⌘" : "Ctrl"} K</kbd>
+          </button>
         </div>
 
         <div className="flex items-center justify-between pt-3 pr-3 pb-1 pl-5">
@@ -124,7 +142,7 @@ export function Sidebar({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search"
+              placeholder="Filter characters"
               className="w-full rounded-lg border border-line bg-surface-2/70 py-1.5 pr-3 pl-8 text-sm placeholder:text-faint focus:border-accent-2/50 focus:outline-none"
             />
           </div>
@@ -184,18 +202,24 @@ export function Sidebar({
         </nav>
 
         <div className="flex items-center gap-1 border-t border-line p-3">
-          <NavLink
-            to="/settings"
-            onClick={onClose}
-            className={({ isActive }) =>
-              clsx(
-                "flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors",
-                isActive ? "bg-surface-2 text-ink" : "text-muted hover:bg-surface-2 hover:text-ink",
-              )
-            }
-          >
-            <Settings size={16} /> Settings
-          </NavLink>
+          {[
+            { to: "/settings", label: "Settings", icon: Settings },
+            { to: "/prompts", label: "Prompts", icon: ScrollText },
+          ].map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                clsx(
+                  "flex flex-1 items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-surface-2 text-ink" : "text-muted hover:bg-surface-2 hover:text-ink",
+                )
+              }
+            >
+              <Icon size={16} /> {label}
+            </NavLink>
+          ))}
           <IconButton label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} onClick={onToggleTheme}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </IconButton>

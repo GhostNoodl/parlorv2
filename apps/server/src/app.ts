@@ -9,6 +9,8 @@ import { characterRoutes } from "./routes/characters";
 import { chatRoutes, messageRoutes } from "./routes/chats";
 import { connectionRoutes } from "./routes/connections";
 import { personaRoutes } from "./routes/personas";
+import { presetRoutes } from "./routes/presets";
+import { searchRoutes } from "./routes/search";
 import { settingsRoutes } from "./routes/settings";
 
 export const app = new Hono();
@@ -27,6 +29,8 @@ app.route("/api/settings", settingsRoutes);
 app.route("/api/connections", connectionRoutes);
 app.route("/api/characters", characterRoutes);
 app.route("/api/personas", personaRoutes);
+app.route("/api/presets", presetRoutes);
+app.route("/api/search", searchRoutes);
 app.route("/api/chats", chatRoutes);
 app.route("/api/messages", messageRoutes);
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));

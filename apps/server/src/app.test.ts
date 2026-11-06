@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { embedCardInPng, emptyCard, extractCardFromPng, type Character, type Chat, type GenerateEvent, type Message, type Persona } from "@parlor/shared";
+import { embedCardInPng, emptyCard, extractCardFromPng, type Character, type Chat, type GenerateEvent, type Message, type Persona, type PromptPreset, type PromptPreview, type SearchResult } from "@parlor/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.PARLOR_DATA_DIR = mkdtempSync(join(tmpdir(), "parlor-test-"));
@@ -216,5 +216,80 @@ describe("personas", () => {
     const left = await json<Persona[]>(api("/personas"));
     expect(left).toHaveLength(1);
     expect((await api(`/personas/${left[0]!.id}`, { method: "DELETE" })).status).toBe(400);
+  });
+});
+
+describe("prompt presets", () => {
+  it("creates a default preset and uses its blocks", async () => {
+    const presets = await json<PromptPreset[]>(api("/presets"));
+    expect(presets).toHaveLength(1);
+    const [preset] = presets;
+    const blocks = [...preset!.blocks, { kind: "text", name: "Note", content: "Whisper, {{char}}." }];
+    const updated = await json<PromptPreset>(api(`/presets/${preset!.id}`, { method: "PATCH", body: JSON.stringify({ blocks }) }));
+    expect(updated.blocks.at(-1)!.id).toMatch(/^text-/);
+
+    const basil = (await json<Character[]>(api("/characters"))).find((c) => c.name === "Basil")!;
+    const chat = await json<Chat>(api(`/characters/${basil.id}/chats`, { method: "POST" }));
+    await generate(chat.id, { mode: "send", text: "Hi" });
+    expect(lastRequest.messages.at(-1).content).toBe("Hi\n\nWhisper, Basil.");
+  });
+
+  it("imports, exports, duplicates and deletes presets", async () => {
+    const st = { prompts: [{ identifier: "main", content: "Be {{char}}." }, { identifier: "chatHistory", marker: true }] };
+    const res = await api("/presets/import", { method: "POST", body: JSON.stringify({ fileName: "Spicy.json", data: st }) });
+    expect(res.status).toBe(201);
+    const imported = (await res.json()) as PromptPreset;
+    expect(imported.name).toBe("Spicy");
+
+    const exported = await json<any>(api(`/presets/${imported.id}/export`));
+    expect(exported.parlor_preset).toBe(1);
+    expect(exported.blocks[0]).toMatchObject({ kind: "main", content: "Be {{char}}." });
+
+    const copy = await json<PromptPreset>(api(`/presets/${imported.id}/duplicate`, { method: "POST" }));
+    expect(copy.name).toBe("Spicy (copy)");
+    expect((await api("/presets/import", { method: "POST", body: JSON.stringify({ data: { nope: true } }) })).status).toBe(400);
+
+    await api("/settings", { method: "PATCH", body: JSON.stringify({ activePresetId: copy.id }) });
+    expect((await api(`/presets/${copy.id}`, { method: "DELETE" })).status).toBe(204);
+    const settings = await json<any>(api("/settings"));
+    expect(settings.activePresetId).not.toBe(copy.id);
+  });
+});
+
+describe("prompt inspector", () => {
+  it("previews the next prompt without calling the model", async () => {
+    const basil = (await json<Character[]>(api("/characters"))).find((c) => c.name === "Basil")!;
+    const chat = await json<Chat>(api(`/characters/${basil.id}/chats`, { method: "POST" }));
+    lastRequest = null;
+    const preview = await json<PromptPreview>(api(`/chats/${chat.id}/prompt`));
+    expect(lastRequest).toBeNull();
+    expect(preview.mode).toBe("send");
+    expect(preview.connection?.model).toBe("mock-a");
+    expect(preview.prompt.system).toContain('<character name="Basil">');
+    expect(preview.prompt.breakdown.some((p) => p.kind === "history" && p.tokens > 0)).toBe(true);
+  });
+});
+
+describe("search", () => {
+  it("finds messages across chats, including hidden swipes", async () => {
+    const results = await json<SearchResult[]>(api(`/search?q=${encodeURIComponent("welcome BACK")}`));
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]).toMatchObject({ characterName: "Basil", role: "assistant" });
+    expect(results[0]!.snippet.toLowerCase()).toContain("welcome back");
+
+    // The first chat's reply was edited on swipe 0, but swipe 1 still says it.
+    const greeting = await json<SearchResult[]>(api(`/search?q=dying+to+tell`));
+    expect(greeting.every((r) => r.swipeId === 1)).toBe(true);
+
+    expect(await json<SearchResult[]>(api(`/search?q=${encodeURIComponent("100%")}`))).toEqual([]);
+    expect((await api("/search?q=")).status).toBe(400);
+  });
+
+  it("can stay inside one chat", async () => {
+    const all = await json<SearchResult[]>(api(`/search?q=Hi`));
+    const chatId = all[0]!.chatId;
+    const scoped = await json<SearchResult[]>(api(`/search?q=Hi&chatId=${chatId}`));
+    expect(scoped.length).toBeGreaterThan(0);
+    expect(scoped.every((r) => r.chatId === chatId)).toBe(true);
   });
 });
