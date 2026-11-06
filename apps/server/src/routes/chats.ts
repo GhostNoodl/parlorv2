@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "../db/client";
 import * as t from "../db/schema";
 import {
+  getActivePersona,
   getCharacter,
   getChat,
   getConnectionRow,
@@ -60,7 +61,7 @@ export const chatRoutes = new Hono()
     const character = await getCharacter(chat.characterId);
     if (!character) return c.json({ error: "Character not found" }, 404);
 
-    const settings = await getSettings();
+    const [settings, persona] = await Promise.all([getSettings(), getActivePersona()]);
     const connectionRow = settings.activeConnectionId ? await getConnectionRow(settings.activeConnectionId) : undefined;
     if (!connectionRow) return c.json({ error: "Set up a model connection in Settings first." }, 400);
     if (!connectionRow.model) return c.json({ error: `Pick a model for "${connectionRow.name}" in Settings.` }, 400);
@@ -84,8 +85,8 @@ export const chatRoutes = new Hono()
 
     const prompt = buildPrompt({
       card: character.card,
-      userName: settings.userName,
-      userDescription: settings.userDescription,
+      userName: persona.name,
+      userDescription: persona.description,
       systemPrompt: settings.systemPrompt,
       history,
       contextSize: connection.settings.contextSize,

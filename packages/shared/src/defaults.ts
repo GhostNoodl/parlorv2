@@ -8,11 +8,12 @@ export const DEFAULT_SYSTEM_PROMPT = [
 ].join("\n");
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  userName: "Guest",
-  userDescription: "",
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   activeConnectionId: null,
+  activePersonaId: null,
 };
+
+export const DEFAULT_PERSONA_NAME = "Guest";
 
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   maxTokens: 1024,

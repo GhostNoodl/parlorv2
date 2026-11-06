@@ -1,10 +1,12 @@
 import {
   DEFAULT_APP_SETTINGS,
+  DEFAULT_PERSONA_NAME,
   type AppSettings,
   type Character,
   type Chat,
   type Connection,
   type Message,
+  type Persona,
 } from "@parlor/shared";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../db/client";
@@ -33,6 +35,26 @@ export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSe
       .onConflictDoUpdate({ target: t.settings.key, set: { value } });
   }
   return getSettings();
+}
+
+// ---- personas ----
+
+/** The persona the user is currently playing as, creating a default one if needed. */
+export async function getActivePersona(): Promise<Persona> {
+  const settings = await getSettings();
+  if (settings.activePersonaId) {
+    const active = await db.query.personas.findFirst({ where: eq(t.personas.id, settings.activePersonaId) });
+    if (active) return active;
+  }
+  const first = await db.query.personas.findFirst({ orderBy: asc(t.personas.createdAt) });
+  if (first) {
+    await updateSettings({ activePersonaId: first.id });
+    return first;
+  }
+  const persona = { id: id(), name: DEFAULT_PERSONA_NAME, description: "", avatar: null, createdAt: Date.now() };
+  await db.insert(t.personas).values(persona);
+  await updateSettings({ activePersonaId: persona.id });
+  return persona;
 }
 
 // ---- connections ----

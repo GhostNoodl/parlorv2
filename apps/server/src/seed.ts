@@ -1,7 +1,8 @@
 import { emptyCard, type CharacterCard } from "@parlor/shared";
+import { inArray } from "drizzle-orm";
 import { db } from "./db/client";
 import * as t from "./db/schema";
-import { id } from "./lib/store";
+import { getActivePersona, id, updateSettings } from "./lib/store";
 
 const basil: CharacterCard = {
   ...emptyCard("Basil"),
@@ -21,8 +22,10 @@ const basil: CharacterCard = {
   tags: ["sample", "fantasy", "cozy"],
 };
 
-/** Gives a brand-new install something to talk to. */
+/** Gives a brand-new install someone to talk to, and someone to be. */
 export async function seed() {
+  await migrateLegacyPersona();
+  await getActivePersona();
   const existing = await db.query.characters.findFirst();
   if (existing) return;
   await db.insert(t.characters).values({
@@ -33,4 +36,21 @@ export async function seed() {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   });
+}
+
+/** Before personas existed, the user's name and description lived in settings. */
+async function migrateLegacyPersona() {
+  const legacy = await db.select().from(t.settings).where(inArray(t.settings.key, ["userName", "userDescription"]));
+  if (!legacy.length) return;
+  const values = Object.fromEntries(legacy.map((r) => [r.key, r.value]));
+  const persona = {
+    id: id(),
+    name: typeof values.userName === "string" && values.userName.trim() ? values.userName : "Guest",
+    description: typeof values.userDescription === "string" ? values.userDescription : "",
+    avatar: null,
+    createdAt: Date.now(),
+  };
+  await db.insert(t.personas).values(persona);
+  await updateSettings({ activePersonaId: persona.id });
+  await db.delete(t.settings).where(inArray(t.settings.key, ["userName", "userDescription"]));
 }

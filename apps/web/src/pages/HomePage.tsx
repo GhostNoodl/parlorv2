@@ -1,9 +1,10 @@
-import { ArrowRight, Menu, PlugZap } from "lucide-react";
+import { ArrowRight, Loader2, Menu, PlugZap, Upload, UserPlus } from "lucide-react";
+import { useRef } from "react";
 import { Link } from "react-router";
-import { Avatar, nameHue } from "../components/Avatar";
+import { nameHue } from "../components/Avatar";
 import { Logo } from "../components/Sidebar";
 import { Button, IconButton } from "../components/ui";
-import { useActiveConnection, useCharacters, useConnections, useOpenCharacter } from "../lib/hooks";
+import { useActiveConnection, useCharacters, useConnections, useImportCharacters, useOpenCharacter } from "../lib/hooks";
 import { useLayout } from "../lib/layout";
 
 function greeting() {
@@ -20,6 +21,8 @@ export function HomePage() {
   const connections = useConnections();
   const active = useActiveConnection();
   const openCharacter = useOpenCharacter();
+  const importCharacters = useImportCharacters();
+  const fileInput = useRef<HTMLInputElement>(null);
   const needsSetup = connections.isSuccess && !active;
 
   return (
@@ -57,39 +60,82 @@ export function HomePage() {
           </div>
         )}
 
-        <h2 className="mt-14 mb-5 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">Your characters</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-14 mb-5 flex items-center justify-between gap-4">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">Your characters</h2>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => fileInput.current?.click()} disabled={importCharacters.isPending}>
+              {importCharacters.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import
+            </Button>
+            <Link to="/characters/new">
+              <Button size="sm">
+                <UserPlus size={14} /> New
+              </Button>
+            </Link>
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            accept=".png,.json,image/png,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              if (files.length) importCharacters.mutate(files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {characters.data?.map((character, i) => {
             const hue = nameHue(character.name);
             return (
               <button
                 key={character.id}
                 onClick={() => openCharacter(character.id)}
-                style={{ animationDelay: `${i * 40}ms` }}
-                className="animate-rise group relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-2xl hover:shadow-black/10"
+                style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
+                className="animate-rise group relative aspect-[2/3] overflow-hidden rounded-2xl border border-line text-left shadow-lg shadow-black/10 transition-all duration-300 hover:-translate-y-1 hover:border-line-strong hover:shadow-2xl hover:shadow-black/25 focus-visible:outline-2 focus-visible:outline-accent-2"
               >
-                <div
-                  className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full opacity-30 blur-3xl transition-opacity group-hover:opacity-50"
-                  style={{ background: `hsl(${hue} 80% 65%)` }}
-                />
-                <div className="relative flex items-center gap-4">
-                  <Avatar name={character.name} src={character.avatar} size={56} />
-                  <div className="min-w-0">
-                    <div className="truncate font-display text-xl font-semibold">{character.name}</div>
-                    <div className="truncate text-xs text-faint">{character.card.tags.slice(0, 3).join(" · ")}</div>
+                {character.avatar ? (
+                  <img src={character.avatar} alt="" className="absolute inset-0 size-full object-cover object-top transition-transform duration-500 group-hover:scale-105" />
+                ) : (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center font-display text-7xl font-semibold text-white/85 transition-transform duration-500 group-hover:scale-105"
+                    style={{ background: `linear-gradient(150deg, hsl(${hue} 75% 72%), hsl(${(hue + 50) % 360} 60% 42%))` }}
+                  >
+                    {character.name.charAt(0).toUpperCase()}
                   </div>
-                </div>
-                <p className="relative mt-4 line-clamp-3 text-sm text-muted">
-                  {character.card.creator_notes || character.card.description.replace(/\{\{char\}\}/gi, character.name)}
-                </p>
-                <div className="relative mt-4 flex items-center gap-1.5 text-sm font-medium text-accent opacity-80 transition-opacity group-hover:opacity-100">
-                  Start chatting <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                  <div className="truncate font-display text-xl font-semibold text-white">{character.name}</div>
+                  <p className="mt-1 line-clamp-2 text-xs text-white/70">
+                    {character.card.creator_notes || character.card.description.replace(/\{\{char\}\}/gi, character.name)}
+                  </p>
+                  {character.card.tags.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {character.card.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] text-white/85 backdrop-blur">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </button>
             );
           })}
+          <Link
+            to="/characters/new"
+            className="flex aspect-[2/3] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-line text-center text-faint transition-colors hover:border-accent/50 hover:text-ink"
+          >
+            <UserPlus size={26} />
+            <span className="px-4 text-sm">
+              Create a character
+              <br />
+              <span className="text-xs">or drop card files anywhere</span>
+            </span>
+          </Link>
         </div>
-        <p className="mt-6 text-sm text-faint">Character card import and a character editor are coming next.</p>
       </div>
     </div>
   );

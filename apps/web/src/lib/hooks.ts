@@ -1,12 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useNavigate } from "react-router";
 import { api } from "./api";
+import { useToast } from "./toast";
 
 export const keys = {
   settings: ["settings"] as const,
   connections: ["connections"] as const,
   characters: ["characters"] as const,
+  personas: ["personas"] as const,
   chats: (characterId: string) => ["chats", characterId] as const,
   chat: (chatId: string) => ["chat", chatId] as const,
 };
@@ -14,6 +16,32 @@ export const keys = {
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: api.settings });
 export const useConnections = () => useQuery({ queryKey: keys.connections, queryFn: api.connections });
 export const useCharacters = () => useQuery({ queryKey: keys.characters, queryFn: api.characters });
+
+export const usePersonas = () => useQuery({ queryKey: keys.personas, queryFn: api.personas });
+
+export function useActivePersona() {
+  const settings = useSettings();
+  const personas = usePersonas();
+  return personas.data?.find((p) => p.id === settings.data?.activePersonaId) ?? personas.data?.[0] ?? null;
+}
+
+/** Imports card files and reports how it went. */
+export function useImportCharacters() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: (files: File[]) => api.importCharacters(files),
+    onSuccess: ({ imported, errors }) => {
+      queryClient.invalidateQueries({ queryKey: keys.characters });
+      if (imported.length) {
+        const names = imported.map((c) => c.name);
+        toast("success", names.length === 1 ? `Welcome, ${names[0]}! 🎉` : `Imported ${names.length} characters: ${names.join(", ")}`);
+      }
+      for (const e of errors) toast("error", `${e.file}: ${e.error}`);
+    },
+    onError: (err) => toast("error", (err as Error).message),
+  });
+}
 
 export function useActiveConnection() {
   const settings = useSettings();

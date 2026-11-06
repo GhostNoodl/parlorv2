@@ -58,3 +58,11 @@ export const messages = sqliteTable(
   },
   (t) => [index("messages_chat_idx").on(t.chatId, t.id)],
 );
+
+export const personas = sqliteTable("personas", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  avatar: text("avatar"),
+  createdAt: integer("created_at").notNull().default(now),
+});
